@@ -25,7 +25,7 @@ StoryCut is a local Windows editor for automatically combining numbered images a
 - Lets you reorder/remove scenes and edit an individual scene duration while preserving total sync.
 - Adds prompt-free motion to still images: zoom in/out, pan in four directions, gentle drift, `Cosmic Motion`, and AI-assisted `2.5D Depth`.
 - Motion can be applied to Ctrl-selected scenes, an inclusive scene range, all images, or an automatic alternating cycle.
-- Includes 30 local visual-effect presets: color/exposure controls, cinematic looks, film styles, camera shake, handheld, flash, flicker, glitch, RGB split, motion blur, documentary looks, and cosmic grades.
+- Includes 31 local visual-effect presets: color/exposure controls, soft Vignette, straight Cinematic Letterbox bars, cinematic looks, film styles, camera shake, handheld, flash, flicker, glitch, RGB split, motion blur, documentary looks, and cosmic grades.
 - Effects support strength control and can target selected scenes, a range, alternating scenes, or every image/video clip.
 - Includes duration-controlled dissolve, black/white fade, zoom, slide, blur, flash, film-burn, and glitch scene transitions.
 - Video clips support 0.25x–4x playback speed while the master timeline remains locked to narration.

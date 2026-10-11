@@ -11,7 +11,7 @@ import tempfile
 from collections import OrderedDict
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 
 def ffmpeg_executable() -> str:
@@ -286,6 +286,13 @@ class PreviewRenderer:
             mask = Image.radial_gradient("L").resize(image.size)
             dark = ImageEnhance.Brightness(image).enhance(max(.25, 1 - .7 * s))
             return Image.composite(image, dark, mask)
+        if effect == "cinematic_letterbox":
+            result = image.copy()
+            bar = max(1, round(result.height * .14 * s))
+            draw = ImageDraw.Draw(result)
+            draw.rectangle((0, 0, result.width, bar - 1), fill="black")
+            draw.rectangle((0, result.height - bar, result.width, result.height), fill="black")
+            return result
         return image
 
     @staticmethod

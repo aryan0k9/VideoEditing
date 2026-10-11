@@ -986,6 +986,12 @@ def _effect_filter(effect: str, strength: float, settings: ExportSettings) -> st
         return f"gblur=sigma={0.5 + 4.0 * s:.3f}"
     if effect == "vignette":
         return f"vignette=angle={0.30 + 0.55 * s:.3f}"
+    if effect == "cinematic_letterbox":
+        bar = max(1, round(settings.height * .14 * s))
+        return (
+            f"drawbox=x=0:y=0:w=iw:h={bar}:color=black:t=fill,"
+            f"drawbox=x=0:y=ih-{bar}:w=iw:h={bar}:color=black:t=fill"
+        )
     if effect == "film_grain":
         return f"noise=alls={3 + round(18 * s)}:allf=t+u"
     if effect == "black_white":

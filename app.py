@@ -55,7 +55,7 @@ from ai_sync import ai_sync_backend, semantic_sync
 
 
 APP_NAME = "StoryCut Studio"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 BG = "#0b0e14"
 PANEL = "#121722"
 PANEL_2 = "#181f2d"
@@ -84,6 +84,7 @@ EFFECT_CODES = {
     "None": "none", "Brightness": "brightness", "Contrast": "contrast",
     "Saturation": "saturation", "Exposure": "exposure", "Warm": "warm", "Cool": "cool",
     "Sharpen": "sharpen", "Blur": "blur", "Vignette": "vignette",
+    "Cinematic Letterbox": "cinematic_letterbox",
     "Film Grain": "film_grain", "Black & White": "black_white", "Sepia": "sepia",
     "Vintage": "vintage", "Cinematic": "cinematic", "Camera Shake": "camera_shake",
     "Handheld": "handheld", "Slow Zoom Pulse": "zoom_pulse", "Flash": "flash",

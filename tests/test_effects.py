@@ -14,7 +14,7 @@ from editor_core import (
 
 EFFECTS = (
     "brightness", "contrast", "saturation", "exposure", "warm", "cool", "sharpen",
-    "blur", "vignette", "film_grain", "black_white", "sepia", "vintage", "cinematic",
+    "blur", "vignette", "cinematic_letterbox", "film_grain", "black_white", "sepia", "vintage", "cinematic",
     "camera_shake", "handheld", "zoom_pulse", "flash", "flicker", "glitch", "rgb_split",
     "motion_blur", "old_film", "dust_scratches", "historical", "dark_dramatic",
     "cold_war", "horror", "cosmic_glow", "space_nebula",
