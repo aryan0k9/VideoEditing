@@ -55,7 +55,7 @@ from ai_sync import ai_sync_backend, semantic_sync
 
 
 APP_NAME = "StoryCut Studio"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 BG = "#0b0e14"
 PANEL = "#121722"
 PANEL_2 = "#181f2d"
@@ -80,6 +80,27 @@ MOTION_CODES = {
 }
 MOTION_LABELS = {value: key for key, value in MOTION_CODES.items()}
 MOTION_CYCLE = ("zoom_in", "pan_right", "zoom_out", "pan_left", "pan_up", "drift", "pan_down")
+EFFECT_CODES = {
+    "None": "none", "Brightness": "brightness", "Contrast": "contrast",
+    "Saturation": "saturation", "Exposure": "exposure", "Warm": "warm", "Cool": "cool",
+    "Sharpen": "sharpen", "Blur": "blur", "Vignette": "vignette",
+    "Film Grain": "film_grain", "Black & White": "black_white", "Sepia": "sepia",
+    "Vintage": "vintage", "Cinematic": "cinematic", "Camera Shake": "camera_shake",
+    "Handheld": "handheld", "Slow Zoom Pulse": "zoom_pulse", "Flash": "flash",
+    "Flicker": "flicker", "Glitch": "glitch", "RGB Split": "rgb_split",
+    "Motion Blur": "motion_blur", "Old Film": "old_film", "Dust & Scratches": "dust_scratches",
+    "Historical": "historical", "Dark Dramatic": "dark_dramatic", "Cold War": "cold_war",
+    "Horror / Mystery": "horror", "Cosmic Glow": "cosmic_glow", "Space Nebula": "space_nebula",
+}
+EFFECT_LABELS = {value: key for key, value in EFFECT_CODES.items()}
+EFFECT_CYCLE = ("cinematic", "warm", "cool", "vintage", "dark_dramatic", "cosmic_glow")
+TRANSITION_CODES = {
+    "None": "none", "Cross Dissolve": "cross_dissolve", "Fade to Black": "fade_black",
+    "Fade to White": "fade_white", "Zoom": "zoom", "Slide Left": "slide_left",
+    "Slide Right": "slide_right", "Blur": "blur", "Flash": "flash",
+    "Film Burn": "film_burn", "Glitch": "glitch",
+}
+TRANSITION_LABELS = {value: key for key, value in TRANSITION_CODES.items()}
 OUTPUT_FORMATS = {
     "16:9 Horizontal": (16, 9, "1920×1080"),
     "9:16 Vertical": (9, 16, "1080×1920"),
@@ -160,6 +181,11 @@ class StoryCutApp(tk.Tk):
         self.whisper_model = tk.StringVar(value="small")
         self.language = tk.StringVar(value="Auto detect (all)")
         self.motion_choice = tk.StringVar(value="Zoom In")
+        self.effect_choice = tk.StringVar(value="Cinematic")
+        self.effect_strength = tk.IntVar(value=65)
+        self.transition_choice = tk.StringVar(value="Cross Dissolve")
+        self.transition_duration = tk.DoubleVar(value=0.35)
+        self.video_speed = tk.DoubleVar(value=1.0)
         self.preview_format = tk.StringVar(value="16:9 Horizontal")
         self.preview_time_text = tk.StringVar(value="00:00:00.000 / 00:00:00.000")
         self.seek_value = tk.DoubleVar(value=0.0)
@@ -310,6 +336,7 @@ class StoryCutApp(tk.Tk):
         home = self._scrollable_ribbon_tab(ribbon, "Home")
         edit = self._scrollable_ribbon_tab(ribbon, "Edit")
         motion = self._scrollable_ribbon_tab(ribbon, "Motion")
+        effects = self._scrollable_ribbon_tab(ribbon, "Effects")
         captions = self._scrollable_ribbon_tab(ribbon, "Captions")
         export = self._scrollable_ribbon_tab(ribbon, "Export")
 
@@ -413,6 +440,53 @@ class StoryCutApp(tk.Tk):
         ttk.Button(row, text="Scene range...", command=self.apply_motion_range).pack(side="left", padx=4)
         ttk.Button(row, text="All images", command=self.apply_motion_all).pack(side="left")
         ttk.Button(row, text="Alternate all", command=self.apply_motion_alternate).pack(side="left", padx=(4, 0))
+
+        look = self._ribbon_group(effects, "Visual effect")
+        ttk.Combobox(
+            look, textvariable=self.effect_choice, state="readonly", width=19,
+            values=tuple(EFFECT_CODES),
+        ).pack(fill="x")
+        strength_row = ttk.Frame(look, style="Ribbon.TFrame")
+        strength_row.pack(fill="x", pady=(4, 0))
+        ttk.Label(strength_row, text="Strength", style="RibbonMuted.TLabel").pack(side="left")
+        ttk.Scale(strength_row, from_=0, to=100, variable=self.effect_strength, length=120).pack(side="left", padx=4)
+        ttk.Label(strength_row, textvariable=self.effect_strength, style="RibbonMuted.TLabel", width=3).pack(side="left")
+
+        effect_apply = self._ribbon_group(effects, "Apply effect to")
+        row = ttk.Frame(effect_apply, style="Ribbon.TFrame")
+        row.pack()
+        ttk.Button(row, text="Selected", command=self.apply_effect_selected).pack(side="left")
+        ttk.Button(row, text="Range...", command=self.apply_effect_range).pack(side="left", padx=4)
+        ttk.Button(row, text="All clips", command=self.apply_effect_all).pack(side="left")
+        ttk.Button(row, text="Alternate", command=self.apply_effect_alternate).pack(side="left", padx=4)
+        ttk.Button(row, text="Clear", command=self.clear_effect_selected).pack(side="left")
+
+        transition = self._ribbon_group(effects, "Transition")
+        ttk.Combobox(
+            transition, textvariable=self.transition_choice, state="readonly", width=18,
+            values=tuple(TRANSITION_CODES),
+        ).pack(fill="x")
+        duration_row = ttk.Frame(transition, style="Ribbon.TFrame")
+        duration_row.pack(fill="x", pady=(4, 0))
+        ttk.Label(duration_row, text="Duration", style="RibbonMuted.TLabel").pack(side="left")
+        ttk.Spinbox(duration_row, from_=0.1, to=1.5, increment=.05, width=5,
+                    textvariable=self.transition_duration).pack(side="left", padx=4)
+        ttk.Label(duration_row, text="sec", style="RibbonMuted.TLabel").pack(side="left")
+        row = ttk.Frame(transition, style="Ribbon.TFrame")
+        row.pack(pady=(4, 0))
+        ttk.Button(row, text="Selected", command=self.apply_transition_selected).pack(side="left")
+        ttk.Button(row, text="Range...", command=self.apply_transition_range).pack(side="left", padx=4)
+        ttk.Button(row, text="All clips", command=self.apply_transition_all).pack(side="left")
+        ttk.Button(row, text="Alternate", command=self.apply_transition_alternate).pack(side="left", padx=4)
+        ttk.Button(row, text="Clear", command=self.clear_transition_selected).pack(side="left")
+
+        speed = self._ribbon_group(effects, "Video speed")
+        row = ttk.Frame(speed, style="Ribbon.TFrame")
+        row.pack()
+        ttk.Combobox(row, textvariable=self.video_speed, state="readonly", width=7,
+                     values=(0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0)).pack(side="left")
+        ttk.Button(row, text="Apply selected videos", command=self.apply_video_speed).pack(side="left", padx=4)
+        ttk.Label(speed, text="Timeline duration stays synced to narration", style="RibbonMuted.TLabel").pack(anchor="w", pady=(4, 0))
 
         options = self._ribbon_group(captions, "Caption options")
         ttk.Checkbutton(options, text="Burn transcript into video", variable=self.caption_enabled,
@@ -676,15 +750,18 @@ class StoryCutApp(tk.Tk):
         self.track_canvas.bind("<Leave>", self._on_track_leave, add="+")
         self.track_canvas.bind("<Configure>", lambda event: self._redraw_track())
 
-        columns = ("scene", "file", "type", "motion", "match", "start", "duration", "end")
+        columns = ("scene", "file", "type", "motion", "effect", "transition", "match", "start", "duration", "end")
         timeline_wrap = ttk.Frame(parent, style="Panel.TFrame")
         timeline_wrap.pack(fill="both", expand=True)
         self.timeline_tree = ttk.Treeview(timeline_wrap, columns=columns, show="headings", selectmode="extended")
         timeline_y = ttk.Scrollbar(timeline_wrap, orient="vertical", command=self.timeline_tree.yview)
         timeline_x = ttk.Scrollbar(timeline_wrap, orient="horizontal", command=self.timeline_tree.xview)
         self.timeline_tree.configure(yscrollcommand=timeline_y.set, xscrollcommand=timeline_x.set)
-        labels = {"scene": "SCENE", "file": "MEDIA", "type": "TYPE", "motion": "MOTION", "match": "AI MATCH", "start": "START", "duration": "LENGTH", "end": "END"}
-        widths = {"scene": 50, "file": 145, "type": 55, "motion": 75, "match": 65, "start": 83, "duration": 68, "end": 83}
+        labels = {"scene": "SCENE", "file": "MEDIA", "type": "TYPE", "motion": "MOTION",
+                  "effect": "EFFECT", "transition": "TRANSITION", "match": "AI MATCH",
+                  "start": "START", "duration": "LENGTH", "end": "END"}
+        widths = {"scene": 50, "file": 130, "type": 55, "motion": 72, "effect": 90,
+                  "transition": 88, "match": 65, "start": 83, "duration": 68, "end": 83}
         for name in columns:
             self.timeline_tree.heading(name, text=labels[name])
             self.timeline_tree.column(name, width=widths[name], anchor="w" if name == "file" else "center")
@@ -1006,11 +1083,16 @@ class StoryCutApp(tk.Tk):
             return
         if item.kind == "video" and item.source_duration:
             source_end = item.source_end or item.source_duration
-            video_time = min(item.source_start + local, max(item.source_start, source_end - 0.05))
+            video_time = min(
+                item.source_start + local * max(.25, min(4.0, item.playback_speed)),
+                max(item.source_start, source_end - 0.05),
+            )
         else:
             video_time = local
         bucket = round(video_time * 5) if item.kind == "video" else round(progress * 100)
-        key = (index, bucket, frame_width, frame_height, item.motion, self.preview_format.get())
+        key = (index, bucket, frame_width, frame_height, item.motion, item.effect,
+               round(item.effect_strength, 2), item.transition, round(item.transition_duration, 2),
+               round(item.playback_speed, 2), self.preview_format.get())
         if not force and key == self._last_preview_key:
             canvas.create_rectangle(frame_x, frame_y, frame_x + frame_width, frame_y + frame_height,
                                     outline="#465166", width=1, tags="overlay")
@@ -1026,6 +1108,8 @@ class StoryCutApp(tk.Tk):
         try:
             frame = self.preview_renderer.render(
                 item.path, item.kind, item.motion, progress, (frame_width, frame_height), video_time,
+                item.effect, item.effect_strength, item.transition,
+                item.transition_duration / max(item.assigned_duration, .01),
             )
         except Exception as exc:
             frame = None
@@ -2011,7 +2095,9 @@ class StoryCutApp(tk.Tk):
                 confidence = self.ai_sync_confidence[index - 1]
             match = "NEEDS IMAGE" if item.kind == "gap" else (f"{confidence:.0%}" if confidence >= 0 else "—")
             self.timeline_tree.insert("", "end", values=(
-                index, item.name, item.kind.upper(), MOTION_LABELS.get(item.motion, item.motion), match, format_time(cursor),
+                index, item.name, item.kind.upper(), MOTION_LABELS.get(item.motion, item.motion),
+                EFFECT_LABELS.get(item.effect, item.effect),
+                TRANSITION_LABELS.get(item.transition, item.transition), match, format_time(cursor),
                 f"{item.assigned_duration:.2f}s", format_time(end),
             ))
             cursor = end
@@ -2080,6 +2166,96 @@ class StoryCutApp(tk.Tk):
 
     def apply_motion_alternate(self) -> None:
         self._apply_motion_indices(list(range(len(self.items))), alternate=True)
+
+    def _selected_timeline_indices(self) -> list[int]:
+        return sorted({self.timeline_tree.index(item_id) for item_id in self.timeline_tree.selection()})
+
+    def _ask_scene_range(self, title: str) -> list[int]:
+        if not self.items:
+            return []
+        start = simpledialog.askinteger(title, "First scene number:", minvalue=1, maxvalue=len(self.items))
+        if start is None:
+            return []
+        end = simpledialog.askinteger(
+            title, "Last scene number:", initialvalue=start, minvalue=start, maxvalue=len(self.items),
+        )
+        return list(range(start - 1, end)) if end is not None else []
+
+    def _apply_effect_indices(self, indices: list[int], alternate: bool = False, clear: bool = False) -> None:
+        targets = [index for index in indices if 0 <= index < len(self.items) and self.items[index].kind != "gap"]
+        if alternate:
+            targets = targets[::2]
+        if not targets:
+            messagebox.showinfo(APP_NAME, "Select at least one image or video scene first.")
+            return
+        self._push_undo()
+        chosen = "none" if clear else EFFECT_CODES[self.effect_choice.get()]
+        strength = max(0.0, min(1.0, self.effect_strength.get() / 100.0))
+        for order, index in enumerate(targets):
+            self.items[index].effect = EFFECT_CYCLE[order % len(EFFECT_CYCLE)] if alternate and not clear else chosen
+            self.items[index].effect_strength = strength
+        self._refresh_timeline()
+        label = "alternating presets" if alternate and not clear else ("removed effect" if clear else self.effect_choice.get())
+        self.status_text.set(f"Applied {label} to {len(targets)} scene(s)")
+
+    def apply_effect_selected(self) -> None:
+        self._apply_effect_indices(self._selected_timeline_indices())
+
+    def apply_effect_range(self) -> None:
+        self._apply_effect_indices(self._ask_scene_range("Effect range"))
+
+    def apply_effect_all(self) -> None:
+        self._apply_effect_indices(list(range(len(self.items))))
+
+    def apply_effect_alternate(self) -> None:
+        self._apply_effect_indices(list(range(len(self.items))), alternate=True)
+
+    def clear_effect_selected(self) -> None:
+        self._apply_effect_indices(self._selected_timeline_indices(), clear=True)
+
+    def _apply_transition_indices(self, indices: list[int], alternate: bool = False, clear: bool = False) -> None:
+        targets = [index for index in indices if 0 <= index < len(self.items) and self.items[index].kind != "gap"]
+        if alternate:
+            targets = targets[::2]
+        if not targets:
+            messagebox.showinfo(APP_NAME, "Select at least one image or video scene first.")
+            return
+        self._push_undo()
+        chosen = "none" if clear else TRANSITION_CODES[self.transition_choice.get()]
+        duration = max(.1, min(1.5, float(self.transition_duration.get())))
+        for index in targets:
+            self.items[index].transition = chosen
+            self.items[index].transition_duration = duration
+        self._refresh_timeline()
+        label = "removed transition" if clear else self.transition_choice.get()
+        self.status_text.set(f"Applied {label} to {len(targets)} scene(s)")
+
+    def apply_transition_selected(self) -> None:
+        self._apply_transition_indices(self._selected_timeline_indices())
+
+    def apply_transition_range(self) -> None:
+        self._apply_transition_indices(self._ask_scene_range("Transition range"))
+
+    def apply_transition_all(self) -> None:
+        self._apply_transition_indices(list(range(len(self.items))))
+
+    def apply_transition_alternate(self) -> None:
+        self._apply_transition_indices(list(range(len(self.items))), alternate=True)
+
+    def clear_transition_selected(self) -> None:
+        self._apply_transition_indices(self._selected_timeline_indices(), clear=True)
+
+    def apply_video_speed(self) -> None:
+        targets = [index for index in self._selected_timeline_indices() if self.items[index].kind == "video"]
+        if not targets:
+            messagebox.showinfo(APP_NAME, "Select one or more video scenes first.")
+            return
+        self._push_undo()
+        speed = max(.25, min(4.0, float(self.video_speed.get())))
+        for index in targets:
+            self.items[index].playback_speed = speed
+        self._refresh_timeline()
+        self.status_text.set(f"Applied {speed:g}x speed to {len(targets)} video scene(s)")
 
     def edit_scene_duration(self, event=None) -> None:
         selection = self.timeline_tree.selection()
@@ -2405,7 +2581,9 @@ class StoryCutApp(tk.Tk):
             "items": [
                 (item.path, item.kind, item.assigned_duration, item.motion,
                  item.source_start, item.source_end, item.source_duration,
-                 item.placeholder_text, item.ai_confidence, item.candidate_path, item.candidate_kind)
+                 item.placeholder_text, item.ai_confidence, item.candidate_path, item.candidate_kind,
+                 item.effect, item.effect_strength, item.transition, item.transition_duration,
+                 item.playback_speed)
                 for item in self.items
             ],
             "audio": (self.audio_path, self.audio_duration),

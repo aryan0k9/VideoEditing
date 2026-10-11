@@ -40,6 +40,11 @@ class MediaItem:
     ai_confidence: float = -1.0
     candidate_path: str = ""
     candidate_kind: str = ""
+    effect: str = "none"
+    effect_strength: float = 0.65
+    transition: str = "none"
+    transition_duration: float = 0.35
+    playback_speed: float = 1.0
 
     @property
     def name(self) -> str:
@@ -872,12 +877,15 @@ def write_timeline_csv(items: list[MediaItem], output_path: str | Path) -> None:
     cursor = 0.0
     with Path(output_path).open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["scene", "filename", "type", "motion", "source_in", "source_out",
+        writer.writerow(["scene", "filename", "type", "motion", "effect", "effect_strength",
+                         "transition", "transition_duration", "playback_speed", "source_in", "source_out",
                          "start", "end", "duration"])
         for index, item in enumerate(items, 1):
             end = cursor + item.assigned_duration
             writer.writerow([
-                index, item.name, item.kind, item.motion,
+                index, item.name, item.kind, item.motion, item.effect,
+                f"{item.effect_strength:.2f}", item.transition,
+                f"{item.transition_duration:.2f}", f"{item.playback_speed:.2f}",
                 format_time(item.source_start),
                 format_time(item.source_end or item.source_duration) if item.kind == "video" else "",
                 format_time(cursor), format_time(end),
@@ -957,6 +965,101 @@ def _motion_filter(motion: str, frames: int, settings: ExportSettings) -> str:
     )
 
 
+def _effect_filter(effect: str, strength: float, settings: ExportSettings) -> str:
+    """Return a broadly-supported FFmpeg filter chain for a scene effect preset."""
+    s = max(0.0, min(1.0, float(strength)))
+    if effect == "brightness":
+        return f"eq=brightness={0.18 * s:.4f}"
+    if effect == "contrast":
+        return f"eq=contrast={1 + 0.55 * s:.4f}"
+    if effect == "saturation":
+        return f"eq=saturation={1 + 1.1 * s:.4f}"
+    if effect == "exposure":
+        return f"eq=brightness={0.10 * s:.4f}:contrast={1 + 0.22 * s:.4f}"
+    if effect == "warm":
+        return f"colorbalance=rs={0.16 * s:.4f}:gs={0.035 * s:.4f}:bs={-0.12 * s:.4f}"
+    if effect == "cool":
+        return f"colorbalance=rs={-0.10 * s:.4f}:gs={0.025 * s:.4f}:bs={0.16 * s:.4f}"
+    if effect == "sharpen":
+        return f"unsharp=5:5:{0.35 + 1.25 * s:.3f}:5:5:0"
+    if effect == "blur":
+        return f"gblur=sigma={0.5 + 4.0 * s:.3f}"
+    if effect == "vignette":
+        return f"vignette=angle={0.30 + 0.55 * s:.3f}"
+    if effect == "film_grain":
+        return f"noise=alls={3 + round(18 * s)}:allf=t+u"
+    if effect == "black_white":
+        return "hue=s=0"
+    if effect == "sepia":
+        return "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"
+    if effect == "vintage":
+        return f"eq=contrast={1 + .18 * s:.3f}:saturation={1 - .32 * s:.3f}:brightness={.025 * s:.3f},colorbalance=rs={.10 * s:.3f}:bs={-.08 * s:.3f},vignette=angle={.40 + .28 * s:.3f}"
+    if effect == "cinematic":
+        return f"eq=contrast={1 + .28 * s:.3f}:saturation={1 + .12 * s:.3f}:brightness={-.025 * s:.3f},colorbalance=rs={.045 * s:.3f}:bs={.065 * s:.3f}"
+    if effect == "camera_shake":
+        border = max(4, round(18 * s))
+        return f"crop=iw-{border * 2}:ih-{border * 2}:x={border}+{border}*sin(n*1.73):y={border}+{border}*sin(n*2.11),scale={settings.width}:{settings.height}"
+    if effect == "handheld":
+        border = max(3, round(10 * s))
+        return f"crop=iw-{border * 2}:ih-{border * 2}:x={border}+{border}*sin(n*.23):y={border}+{border}*sin(n*.31),scale={settings.width}:{settings.height}"
+    if effect == "zoom_pulse":
+        border = max(4, round(22 * s))
+        return f"crop=iw-{border * 2}:ih-{border * 2}:x={border}+{border}*sin(n*.12):y={border}+{border}*cos(n*.12),scale={settings.width}:{settings.height}"
+    if effect == "flash":
+        return f"eq=brightness='{.08 + .22 * s:.3f}*lt(mod(t\\,2)\\,.14)'"
+    if effect == "flicker":
+        return f"eq=brightness='{.018 + .045 * s:.3f}*sin(22*t)'"
+    if effect == "glitch":
+        return f"noise=alls={2 + round(10 * s)}:allf=t,colorbalance=rs={.07 * s:.3f}:bs={-.06 * s:.3f}"
+    if effect == "rgb_split":
+        return f"colorbalance=rs={.12 * s:.3f}:gs={-.035 * s:.3f}:bs={.11 * s:.3f},unsharp=3:3:{.35 + .4 * s:.3f}"
+    if effect == "motion_blur":
+        return "tmix=frames=3:weights='1 2 1'"
+    if effect == "old_film":
+        return f"hue=s={1 - .48 * s:.3f},eq=contrast={1 + .24 * s:.3f}:brightness={-.035 * s:.3f},noise=alls={3 + round(14 * s)}:allf=t+u,vignette=angle={.42 + .25 * s:.3f}"
+    if effect == "dust_scratches":
+        return f"eq=contrast={1 + .10 * s:.3f}:saturation={1 - .20 * s:.3f},noise=alls={5 + round(22 * s)}:allf=t+u"
+    if effect == "historical":
+        return f"colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,eq=contrast={1 + .12 * s:.3f},vignette=angle={.38 + .22 * s:.3f}"
+    if effect == "dark_dramatic":
+        return f"eq=brightness={-.10 * s:.3f}:contrast={1 + .48 * s:.3f}:saturation={1 - .15 * s:.3f},vignette=angle={.42 + .35 * s:.3f}"
+    if effect == "cold_war":
+        return f"eq=contrast={1 + .30 * s:.3f}:saturation={1 - .40 * s:.3f},colorbalance=rs={-.06 * s:.3f}:gs={.07 * s:.3f}:bs={.10 * s:.3f},noise=alls={2 + round(9 * s)}:allf=t"
+    if effect == "horror":
+        return f"eq=brightness={-.12 * s:.3f}:contrast={1 + .55 * s:.3f}:saturation={1 - .38 * s:.3f},colorbalance=rs={.10 * s:.3f}:gs={-.08 * s:.3f}:bs={-.10 * s:.3f},vignette=angle={.48 + .28 * s:.3f}"
+    if effect == "cosmic_glow":
+        return f"eq=contrast={1 + .20 * s:.3f}:saturation={1 + .55 * s:.3f},colorbalance=rs={.08 * s:.3f}:bs={.18 * s:.3f},unsharp=5:5:{.30 + .65 * s:.3f}"
+    if effect == "space_nebula":
+        return f"hue=h={18 * s:.2f}:s={1 + .60 * s:.3f},eq=contrast={1 + .25 * s:.3f}:brightness={-.025 * s:.3f},colorbalance=bs={.14 * s:.3f}:rs={.09 * s:.3f}"
+    return ""
+
+
+def _transition_filter(transition: str, duration: float, scene_duration: float) -> str:
+    """Create duration-preserving scene-edge transitions for chunk-safe export."""
+    d = min(max(0.08, float(duration)), max(0.08, scene_duration / 2.0))
+    out_start = max(0.0, scene_duration - d)
+    if transition == "cross_dissolve":
+        return f"fade=t=in:st=0:d={d:.3f},fade=t=out:st={out_start:.3f}:d={d:.3f}"
+    if transition == "fade_black":
+        return f"fade=t=in:st=0:d={d:.3f}:color=black,fade=t=out:st={out_start:.3f}:d={d:.3f}:color=black"
+    if transition == "fade_white":
+        return f"fade=t=in:st=0:d={d:.3f}:color=white,fade=t=out:st={out_start:.3f}:d={d:.3f}:color=white"
+    if transition == "zoom":
+        return f"fade=t=in:st=0:d={d:.3f},fade=t=out:st={out_start:.3f}:d={d:.3f},unsharp=3:3:.45"
+    if transition in {"slide_left", "slide_right"}:
+        return f"fade=t=in:st=0:d={d:.3f},fade=t=out:st={out_start:.3f}:d={d:.3f}"
+    if transition == "blur":
+        return f"fade=t=in:st=0:d={d:.3f},fade=t=out:st={out_start:.3f}:d={d:.3f},gblur=sigma=.65"
+    if transition == "flash":
+        flash_start = max(0.0, out_start - min(.08, d / 3))
+        return f"fade=t=in:st=0:d={min(.12, d):.3f}:color=white,fade=t=out:st={flash_start:.3f}:d={min(.12, d):.3f}:color=white"
+    if transition == "film_burn":
+        return f"fade=t=in:st=0:d={d:.3f}:color=0xFF6A22,fade=t=out:st={out_start:.3f}:d={d:.3f}:color=0xFF6A22"
+    if transition == "glitch":
+        return f"fade=t=in:st=0:d={min(.15, d):.3f},fade=t=out:st={out_start:.3f}:d={min(.15, d):.3f},noise=alls=3:allf=t"
+    return ""
+
+
 def _scene_filter_chain(index: int, item: MediaItem, frames: int, settings: ExportSettings) -> str:
     input_duration = (frames + 1) / settings.fps
     chain = (
@@ -969,7 +1072,21 @@ def _scene_filter_chain(index: int, item: MediaItem, frames: int, settings: Expo
         if motion_filter:
             chain += f",{motion_filter}"
     if item.kind == "video":
+        speed = max(0.25, min(4.0, float(item.playback_speed)))
+        if abs(speed - 1.0) > 0.001:
+            chain += f",setpts=PTS/{speed:.4f}"
         chain += f",tpad=stop_mode=clone:stop_duration={input_duration:.6f}"
+    effect_filter = _effect_filter(item.effect, item.effect_strength, settings)
+    if effect_filter:
+        chain += f",{effect_filter}"
+    transition_filter = _transition_filter(
+        item.transition, item.transition_duration, frames / settings.fps,
+    )
+    if transition_filter:
+        chain += f",{transition_filter}"
+    # Some crop/scale effects can change sample aspect ratio; concat requires
+    # every scene to expose identical geometry and SAR.
+    chain += ",setsar=1"
     chain += (
         f",trim=end_frame={frames},setpts=N/({settings.fps}*TB),"
         f"tpad=stop_mode=clone:stop_duration={1 / settings.fps:.9f}[v{index}]"
@@ -981,7 +1098,8 @@ def _video_input_arguments(item: MediaItem, input_duration: float) -> list[str]:
     start = max(0.0, item.source_start)
     source_end = item.source_end or item.source_duration
     available = max(0.01, source_end - start) if source_end else input_duration
-    duration = min(input_duration, available)
+    speed = max(0.25, min(4.0, float(item.playback_speed)))
+    duration = min(input_duration * speed, available)
     return ["-ss", f"{start:.6f}", "-t", f"{duration:.6f}", "-i", item.path]
 
 

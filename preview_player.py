@@ -11,7 +11,7 @@ import tempfile
 from collections import OrderedDict
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps
 
 
 def ffmpeg_executable() -> str:
@@ -220,6 +220,97 @@ class PreviewRenderer:
         target = (max(width, round(width * scale)), max(height, round(height * scale)))
         return ImageOps.fit(image, target, method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
 
+    @staticmethod
+    def _apply_effect(image: Image.Image, effect: str, strength: float, progress: float) -> Image.Image:
+        s = max(0.0, min(1.0, strength))
+        if effect == "brightness":
+            return ImageEnhance.Brightness(image).enhance(1 + .28 * s)
+        if effect == "contrast":
+            return ImageEnhance.Contrast(image).enhance(1 + .55 * s)
+        if effect == "saturation":
+            return ImageEnhance.Color(image).enhance(1 + 1.1 * s)
+        if effect == "exposure":
+            return ImageEnhance.Contrast(ImageEnhance.Brightness(image).enhance(1 + .18 * s)).enhance(1 + .2 * s)
+        if effect in {"warm", "cool", "cosmic_glow", "space_nebula", "cold_war", "horror"}:
+            r, g, b = image.split()
+            if effect == "warm":
+                factors = (1 + .20 * s, 1 + .035 * s, 1 - .14 * s)
+            elif effect in {"cool", "cold_war"}:
+                factors = (1 - .12 * s, 1 + .04 * s, 1 + .20 * s)
+            elif effect == "horror":
+                factors = (1 + .13 * s, 1 - .12 * s, 1 - .12 * s)
+            else:
+                factors = (1 + .10 * s, 1 - .03 * s, 1 + .25 * s)
+            image = Image.merge("RGB", tuple(channel.point(lambda value, f=f: min(255, value * f)) for channel, f in zip((r, g, b), factors)))
+            if effect in {"cosmic_glow", "space_nebula"}:
+                image = ImageEnhance.Color(image).enhance(1 + .55 * s)
+            return image
+        if effect == "sharpen":
+            return image.filter(ImageFilter.UnsharpMask(radius=2, percent=round(80 + 160 * s), threshold=2))
+        if effect == "blur":
+            return image.filter(ImageFilter.GaussianBlur(.5 + 4 * s))
+        if effect in {"black_white", "sepia", "vintage", "old_film", "historical"}:
+            gray = ImageOps.grayscale(image)
+            if effect == "black_white":
+                return gray.convert("RGB")
+            sepia = ImageOps.colorize(gray, "#24160d", "#f2d39b")
+            mix = .9 if effect in {"sepia", "historical"} else .58 + .25 * s
+            image = Image.blend(image, sepia, mix)
+            if effect in {"vintage", "old_film", "historical"}:
+                image = ImageEnhance.Contrast(image).enhance(1 + .2 * s)
+            return image
+        if effect in {"film_grain", "dust_scratches", "glitch", "old_film", "cold_war"}:
+            noise = Image.effect_noise(image.size, 16 + 55 * s).convert("RGB")
+            return Image.blend(image, noise, .025 + .10 * s)
+        if effect == "cinematic":
+            return ImageEnhance.Color(ImageEnhance.Contrast(image).enhance(1 + .28 * s)).enhance(1 + .12 * s)
+        if effect in {"dark_dramatic", "horror"}:
+            return ImageEnhance.Contrast(ImageEnhance.Brightness(image).enhance(1 - .16 * s)).enhance(1 + .48 * s)
+        if effect in {"camera_shake", "handheld", "zoom_pulse"}:
+            amplitude = {"camera_shake": 13, "handheld": 7, "zoom_pulse": 9}[effect] * s
+            dx = round(amplitude * math.sin(progress * (35 if effect == "camera_shake" else 9)))
+            dy = round(amplitude * math.cos(progress * (41 if effect == "camera_shake" else 11)))
+            return ImageChops.offset(image, dx, dy)
+        if effect == "flash":
+            pulse = max(0.0, math.sin(progress * math.pi * 8)) ** 12
+            return Image.blend(image, Image.new("RGB", image.size, "white"), pulse * (.25 + .5 * s))
+        if effect == "flicker":
+            return ImageEnhance.Brightness(image).enhance(1 + math.sin(progress * 80) * .07 * s)
+        if effect == "rgb_split":
+            offset = max(1, round(6 * s))
+            r, g, b = image.split()
+            return Image.merge("RGB", (ImageChops.offset(r, offset, 0), g, ImageChops.offset(b, -offset, 0)))
+        if effect == "motion_blur":
+            return image.filter(ImageFilter.GaussianBlur(.6 + 1.8 * s))
+        if effect == "vignette":
+            mask = Image.radial_gradient("L").resize(image.size)
+            dark = ImageEnhance.Brightness(image).enhance(max(.25, 1 - .7 * s))
+            return Image.composite(image, dark, mask)
+        return image
+
+    @staticmethod
+    def _apply_transition(image: Image.Image, transition: str, duration_fraction: float, progress: float) -> Image.Image:
+        edge = max(.02, min(.49, duration_fraction))
+        amount = max(0.0, 1 - progress / edge) if progress < edge else max(0.0, (progress - (1 - edge)) / edge)
+        if amount <= 0 or transition == "none":
+            return image
+        color = "white" if transition in {"fade_white", "flash"} else "#ff6a22" if transition == "film_burn" else "black"
+        if transition == "blur":
+            return image.filter(ImageFilter.GaussianBlur(5 * amount))
+        if transition in {"slide_left", "slide_right"}:
+            distance = round(image.width * amount)
+            if transition == "slide_left":
+                distance = -distance
+            shifted = ImageChops.offset(image, distance, 0)
+            return Image.blend(shifted, Image.new("RGB", image.size, color), .25 * amount)
+        if transition == "zoom":
+            zoomed = ImageOps.fit(image, (image.width, image.height), method=Image.Resampling.LANCZOS, centering=(.5, .5))
+            return Image.blend(zoomed, Image.new("RGB", image.size, "black"), .65 * amount)
+        if transition == "glitch":
+            shifted = ImageChops.offset(image, round(18 * amount), round(5 * amount))
+            return Image.blend(shifted, Image.new("RGB", image.size, "black"), .30 * amount)
+        return Image.blend(image, Image.new("RGB", image.size, color), min(1.0, amount))
+
     def render(
         self,
         path: str,
@@ -228,16 +319,19 @@ class PreviewRenderer:
         progress: float,
         size: tuple[int, int],
         video_seconds: float = 0.0,
+        effect: str = "none",
+        effect_strength: float = 0.65,
+        transition: str = "none",
+        transition_duration_fraction: float = 0.1,
     ) -> Image.Image | None:
         width, height = max(16, size[0]), max(16, size[1])
         image = self.video_frame(path, video_seconds) if kind == "video" else self.source_image(path)
         if image is None:
             return None
-        if kind != "image" or motion == "none":
-            return ImageOps.pad(image, (width, height), method=Image.Resampling.LANCZOS, color="#080a0f")
-
         p = max(0.0, min(1.0, progress))
-        if motion == "zoom_in":
+        if kind != "image" or motion == "none":
+            result = ImageOps.pad(image, (width, height), method=Image.Resampling.LANCZOS, color="#080a0f")
+        elif motion == "zoom_in":
             zoom = 1.0 + 0.10 * p
         elif motion == "zoom_out":
             zoom = 1.10 - 0.10 * p
@@ -249,24 +343,27 @@ class PreviewRenderer:
             zoom = 1.03 + 0.035 * p
         else:
             zoom = 1.10
-        large = self._cover(image, (width, height), zoom)
-        max_x, max_y = max(0, large.width - width), max(0, large.height - height)
-        x, y = max_x / 2, max_y / 2
-        if motion == "pan_left":
-            x = max_x * (1 - p)
-        elif motion == "pan_right":
-            x = max_x * p
-        elif motion == "pan_up":
-            y = max_y * (1 - p)
-        elif motion == "pan_down":
-            y = max_y * p
-        elif motion == "drift":
-            x = max_x * (0.15 + 0.70 * p)
-            y = max_y * (0.75 - 0.50 * p)
-        elif motion == "cosmic":
-            x = max_x * (0.38 + 0.18 * math.sin(math.pi * p))
-            y = max_y * (0.55 - 0.16 * math.sin(math.pi * p))
-        elif motion == "depth_2_5d":
-            x = max_x * (0.25 + 0.50 * p)
-            y = max_y * (0.58 - 0.16 * p)
-        return large.crop((round(x), round(y), round(x) + width, round(y) + height))
+        if kind == "image" and motion != "none":
+            large = self._cover(image, (width, height), zoom)
+            max_x, max_y = max(0, large.width - width), max(0, large.height - height)
+            x, y = max_x / 2, max_y / 2
+            if motion == "pan_left":
+                x = max_x * (1 - p)
+            elif motion == "pan_right":
+                x = max_x * p
+            elif motion == "pan_up":
+                y = max_y * (1 - p)
+            elif motion == "pan_down":
+                y = max_y * p
+            elif motion == "drift":
+                x = max_x * (0.15 + 0.70 * p)
+                y = max_y * (0.75 - 0.50 * p)
+            elif motion == "cosmic":
+                x = max_x * (0.38 + 0.18 * math.sin(math.pi * p))
+                y = max_y * (0.55 - 0.16 * math.sin(math.pi * p))
+            elif motion == "depth_2_5d":
+                x = max_x * (0.25 + 0.50 * p)
+                y = max_y * (0.58 - 0.16 * p)
+            result = large.crop((round(x), round(y), round(x) + width, round(y) + height))
+        result = self._apply_effect(result, effect, effect_strength, p)
+        return self._apply_transition(result, transition, transition_duration_fraction, p)
