@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.test_artifacts/
+build/
+dist/
+*.spec
+video_analysis/
+video_analysis_assets/
+.venv/
+venv/
+.env
+*.storycut
